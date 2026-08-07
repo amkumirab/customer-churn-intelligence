@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.DS_Store
+models/*.joblib
+models/*.json
+data/*.csv
+!data/example_customers.csv
+!data/WA_Fn-UseC_-Telco-Customer-Churn.csv
+work/
