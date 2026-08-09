@@ -24,6 +24,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .data import CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES, TARGET
+from .explain import global_feature_importance
+
+ARTIFACT_VERSION = 2
 
 
 def build_pipeline(classifier: Any) -> Pipeline:
@@ -101,9 +104,23 @@ def train_and_evaluate(
         fitted[name] = pipeline
 
     best_name = max(results, key=lambda name: results[name]["roc_auc"])
+    background_size = min(100, len(x_train))
+    explanation_background = x_train.sample(n=background_size, random_state=random_state)
+    remaining = x_train.drop(index=explanation_background.index, errors="ignore")
+    explanation_background = explanation_background.reset_index(drop=True)
+    if remaining.empty:
+        remaining = x_train
+    explanation_sample = remaining.sample(
+        n=min(250, len(remaining)), random_state=random_state
+    )
+    importance = global_feature_importance(
+        fitted[best_name], explanation_background, explanation_sample
+    )
     report: dict[str, Any] = {
+        "artifact_version": ARTIFACT_VERSION,
         "best_model": best_name,
         "feature_columns": FEATURE_COLUMNS,
+        "global_feature_importance": importance,
         "test_rows": len(x_test),
         "churn_rate": round(float(data[TARGET].mean()), 4),
         "models": results,
@@ -112,7 +129,15 @@ def train_and_evaluate(
     if model_path:
         output = Path(model_path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"pipeline": fitted[best_name], "report": report}, output)
+        joblib.dump(
+            {
+                "artifact_version": ARTIFACT_VERSION,
+                "pipeline": fitted[best_name],
+                "report": report,
+                "explanation_background": explanation_background,
+            },
+            output,
+        )
     if metrics_path:
         output = Path(metrics_path)
         output.parent.mkdir(parents=True, exist_ok=True)
