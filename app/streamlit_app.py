@@ -13,7 +13,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data import FEATURE_COLUMNS, KAGGLE_FILENAME, load_training_data  # noqa: E402
-from src.model import load_artifact, predict_customer, train_and_evaluate  # noqa: E402
+from src.explain import explain_customer  # noqa: E402
+from src.model import (  # noqa: E402
+    ARTIFACT_VERSION,
+    load_artifact,
+    predict_customer,
+    train_and_evaluate,
+)
 
 MODEL_PATH = ROOT / "models" / "churn_model.joblib"
 METRICS_PATH = ROOT / "models" / "metrics.json"
@@ -24,7 +30,8 @@ DATA_PATH = ROOT / "data" / KAGGLE_FILENAME
 def get_artifact() -> dict:
     artifact = load_artifact(MODEL_PATH) if MODEL_PATH.exists() else None
     saved_features = artifact.get("report", {}).get("feature_columns") if artifact else None
-    if saved_features != FEATURE_COLUMNS:
+    saved_version = artifact.get("artifact_version") if artifact else None
+    if saved_features != FEATURE_COLUMNS or saved_version != ARTIFACT_VERSION:
         data = load_training_data(DATA_PATH)
         train_and_evaluate(data, MODEL_PATH, METRICS_PATH)
         artifact = load_artifact(MODEL_PATH)
@@ -89,7 +96,7 @@ with left:
             streaming_movies = s1.selectbox(
                 "Streaming movies", ["No", "Yes", "No internet service"]
             )
-        submitted = st.form_submit_button("Calculate churn risk", use_container_width=True)
+        submitted = st.form_submit_button("Calculate churn risk", width="stretch")
 
 with right:
     st.subheader("Risk assessment")
@@ -126,10 +133,40 @@ with right:
         else:
             st.success(f"Low risk — {result['action']}")
 
+        local_explanation = explain_customer(
+            artifact["pipeline"],
+            customer,
+            artifact["explanation_background"],
+        )
+        st.markdown("**Why this prediction?**")
+        st.caption(
+            "Positive SHAP values increase predicted churn risk; negative values reduce it."
+        )
+        st.bar_chart(local_explanation.set_index("feature")[["impact"]])
+        st.dataframe(
+            local_explanation,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "feature": "Factor",
+                "value": "Customer value",
+                "impact": st.column_config.NumberColumn("SHAP impact", format="%.4f"),
+                "direction": "Effect",
+            },
+        )
+
         st.markdown("**Submitted profile**")
-        st.dataframe(pd.DataFrame([customer]), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame([customer]), hide_index=True, width="stretch")
     else:
         st.info("Complete the profile and calculate its risk to see a prediction.")
+
+st.divider()
+st.subheader("What generally drives churn?")
+st.caption(
+    "Mean absolute SHAP values rank the features with the strongest overall influence."
+)
+global_importance = pd.DataFrame(report["global_feature_importance"])
+st.bar_chart(global_importance.set_index("feature")[["importance"]])
 
 st.divider()
 st.caption(

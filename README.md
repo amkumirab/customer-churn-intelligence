@@ -21,6 +21,7 @@ telecom customers, 19 model features, and a binary churn target.
 - Missing-value handling, scaling, and one-hot encoding
 - Comparison of Logistic Regression and Random Forest
 - Evaluation with ROC-AUC, accuracy, precision, recall, and F1
+- Global and per-customer explanations using SHAP values
 - Interactive Streamlit dashboard with risk-based recommendations
 - Automated tests with GitHub Actions and optional Docker deployment
 
@@ -32,8 +33,10 @@ Kaggle CSV or synthetic fallback
         v
 Train/test split -> preprocessing -> model comparison -> best model
                                                        |
-                                                       v
-                                              Streamlit dashboard
+                                      +----------------+----------------+
+                                      |                                 |
+                                      v                                 v
+                              SHAP explanations                 Streamlit dashboard
 ```
 
 ## Baseline results
@@ -48,6 +51,18 @@ The reproducible default run uses all 7,043 Kaggle records and a stratified 25% 
 Logistic Regression is selected by test ROC-AUC. Recall is highlighted because failing to flag
 a customer who actually churns can be expensive. Results are a portfolio baseline and should
 not be interpreted as production business performance.
+
+## Explainable predictions
+
+The dashboard makes model output easier to audit and communicate:
+
+- **Global importance** ranks the original customer fields by mean absolute SHAP value.
+- **Local explanations** show which factors increased or reduced one customer's predicted risk.
+- One-hot encoded values are grouped back into readable business fields.
+- A versioned model artifact stores a representative background sample for reproducibility.
+
+SHAP values explain model behavior and associations; they do not prove that a feature causes
+customer churn.
 
 ## Quick start
 
@@ -108,6 +123,7 @@ ruff check .
 app/                 Streamlit user interface
 data/                Kaggle dataset, attribution, and schema example
 src/data.py           Kaggle cleaner and synthetic fallback generator
+src/explain.py        SHAP global and local explanation utilities
 src/model.py          Preprocessing, training, evaluation and prediction
 src/train.py          Training command-line interface
 tests/                Automated tests
@@ -123,7 +139,6 @@ tests/                Automated tests
 
 ## Suggested next improvements
 
-- Add SHAP explanations and global feature importance
 - Tune the decision threshold using retention campaign costs
 - Add drift monitoring and model versioning
 - Deploy the dashboard to Streamlit Community Cloud
