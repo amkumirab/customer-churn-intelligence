@@ -12,6 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.batch import (  # noqa: E402
+    BatchValidationError,
+    batch_summary,
+    predict_batch,
+)
 from src.data import FEATURE_COLUMNS, KAGGLE_FILENAME, load_training_data  # noqa: E402
 from src.explain import explain_customer  # noqa: E402
 from src.model import (  # noqa: E402
@@ -167,6 +172,67 @@ st.caption(
 )
 global_importance = pd.DataFrame(report["global_feature_importance"])
 st.bar_chart(global_importance.set_index("feature")[["importance"]])
+
+st.divider()
+st.subheader("Batch churn prediction")
+st.caption(
+    "Upload up to 10,000 customers, review the highest-risk accounts, and export the results."
+)
+
+template = pd.read_csv(ROOT / "data" / "example_customers.csv")[FEATURE_COLUMNS]
+upload_column, template_column = st.columns([3, 1])
+with upload_column:
+    uploaded_file = st.file_uploader("Upload a customer CSV", type=["csv"])
+with template_column:
+    st.download_button(
+        "Download CSV template",
+        template.to_csv(index=False).encode("utf-8"),
+        file_name="customer_batch_template.csv",
+        mime="text/csv",
+        width="stretch",
+    )
+
+if uploaded_file is None:
+    st.info(
+        "Use the template for project-style columns. "
+        "Original Kaggle Telco columns are also accepted."
+    )
+else:
+    try:
+        uploaded_data = pd.read_csv(uploaded_file)
+        batch_results = predict_batch(artifact["pipeline"], uploaded_data)
+        summary = batch_summary(batch_results)
+
+        summary_columns = st.columns(4)
+        summary_columns[0].metric("Customers scored", f"{summary['customers']:,}")
+        summary_columns[1].metric("High risk", f"{summary['high_risk']:,}")
+        summary_columns[2].metric("Medium risk", f"{summary['medium_risk']:,}")
+        summary_columns[3].metric(
+            "Average churn probability", f"{summary['average_probability']:.1%}"
+        )
+
+        st.dataframe(
+            batch_results,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "customer_id": "Customer ID",
+                "churn_probability": st.column_config.ProgressColumn(
+                    "Churn probability", min_value=0.0, max_value=1.0, format="%.1%%"
+                ),
+                "risk_level": "Risk level",
+                "recommended_action": "Recommended action",
+            },
+        )
+        st.download_button(
+            "Download scored customers",
+            batch_results.to_csv(index=False).encode("utf-8"),
+            file_name="churn_predictions.csv",
+            mime="text/csv",
+            width="stretch",
+        )
+    except (BatchValidationError, pd.errors.ParserError, UnicodeDecodeError) as error:
+        st.error(f"The CSV could not be processed: {error}")
 
 st.divider()
 st.caption(
