@@ -151,14 +151,18 @@ def load_artifact(model_path: str | Path) -> dict[str, Any]:
     return joblib.load(model_path)
 
 
+def risk_details(probability: float) -> tuple[str, str]:
+    """Translate a churn probability into a risk tier and retention action."""
+    if probability >= 0.70:
+        return "High", "Contact the customer and offer a retention incentive."
+    if probability >= 0.40:
+        return "Medium", "Review recent support issues and monitor the account."
+    return "Low", "No immediate intervention is required."
+
+
 def predict_customer(pipeline: Pipeline, customer: dict[str, Any]) -> dict[str, Any]:
     """Predict churn risk for one customer and attach an action label."""
     row = pd.DataFrame([customer], columns=FEATURE_COLUMNS)
     probability = float(pipeline.predict_proba(row)[0, 1])
-    if probability >= 0.70:
-        risk, action = "High", "Contact the customer and offer a retention incentive."
-    elif probability >= 0.40:
-        risk, action = "Medium", "Review recent support issues and monitor the account."
-    else:
-        risk, action = "Low", "No immediate intervention is required."
+    risk, action = risk_details(probability)
     return {"churn_probability": round(probability, 4), "risk_level": risk, "action": action}

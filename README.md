@@ -22,6 +22,7 @@ telecom customers, 19 model features, and a binary churn target.
 - Comparison of Logistic Regression and Random Forest
 - Evaluation with ROC-AUC, accuracy, precision, recall, and F1
 - Global and per-customer explanations using SHAP values
+- Batch CSV scoring with validation, risk ranking, and downloadable results
 - Interactive Streamlit dashboard with risk-based recommendations
 - Automated tests with GitHub Actions and optional Docker deployment
 
@@ -63,6 +64,20 @@ The dashboard makes model output easier to audit and communicate:
 
 SHAP values explain model behavior and associations; they do not prove that a feature causes
 customer churn.
+
+## Batch predictions
+
+The dashboard can score up to 10,000 customers in one upload:
+
+- accepts the included project template or the original Kaggle Telco column names
+- validates required fields and returns readable data-quality errors
+- preserves `customer_id` or Kaggle `customerID` values when available
+- ranks customers by churn probability and assigns Low, Medium, or High risk
+- summarizes the high- and medium-risk customer counts
+- exports a retention-ready CSV with recommended actions
+
+Download the input template directly from the dashboard or use
+[`data/example_customers.csv`](data/example_customers.csv) as a schema reference.
 
 ## Quick start
 
@@ -123,6 +138,7 @@ ruff check .
 app/                 Streamlit user interface
 data/                Kaggle dataset, attribution, and schema example
 src/data.py           Kaggle cleaner and synthetic fallback generator
+src/batch.py          CSV validation, batch scoring, summaries, and export data
 src/explain.py        SHAP global and local explanation utilities
 src/model.py          Preprocessing, training, evaluation and prediction
 src/train.py          Training command-line interface
