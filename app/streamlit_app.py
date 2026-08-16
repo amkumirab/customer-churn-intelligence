@@ -25,6 +25,7 @@ from src.model import (  # noqa: E402
     predict_customer,
     train_and_evaluate,
 )
+from src.threshold import recommended_threshold, threshold_scenario  # noqa: E402
 
 MODEL_PATH = ROOT / "models" / "churn_model.joblib"
 METRICS_PATH = ROOT / "models" / "metrics.json"
@@ -50,6 +51,55 @@ st.caption("Risk scoring trained on the Kaggle IBM Telco Customer Churn dataset.
 artifact = get_artifact()
 report = artifact["report"]
 best_metrics = report["models"][report["best_model"]]
+
+st.sidebar.header("Decision policy")
+st.sidebar.caption(
+    "Compare retention outreach cost with the cost of missing a customer who churns."
+)
+intervention_cost = st.sidebar.number_input(
+    "Intervention cost per contacted customer ($)",
+    min_value=0.0,
+    value=25.0,
+    step=5.0,
+)
+missed_churn_cost = st.sidebar.number_input(
+    "Cost per missed churner ($)",
+    min_value=0.0,
+    value=300.0,
+    step=25.0,
+)
+recommendation = recommended_threshold(
+    report["threshold_counts"], intervention_cost, missed_churn_cost
+)
+high_risk_threshold = st.sidebar.slider(
+    "High-risk threshold",
+    min_value=0.20,
+    max_value=0.90,
+    value=0.70,
+    step=0.05,
+)
+medium_risk_threshold = round(max(0.10, high_risk_threshold - 0.30), 2)
+selected_scenario = threshold_scenario(
+    report["threshold_counts"],
+    high_risk_threshold,
+    intervention_cost,
+    missed_churn_cost,
+)
+st.sidebar.metric("Recommended threshold", f"{recommendation['threshold']:.0%}")
+st.sidebar.metric(
+    "Estimated evaluation cost",
+    f"${selected_scenario['estimated_cost']:,.0f}",
+    delta=(
+        f"${selected_scenario['estimated_cost'] - recommendation['estimated_cost']:,.0f} "
+        "vs. recommended"
+    ),
+    delta_color="inverse",
+)
+st.sidebar.caption(
+    f"Selected policy: {selected_scenario['precision']:.1%} precision, "
+    f"{selected_scenario['recall']:.1%} recall, "
+    f"medium risk starts at {medium_risk_threshold:.0%}."
+)
 
 metric_columns = st.columns(4)
 metric_columns[0].metric("Best model", report["best_model"].replace("_", " ").title())
@@ -127,7 +177,12 @@ with right:
             "paperless_billing": paperless,
             "payment_method": payment,
         }
-        result = predict_customer(artifact["pipeline"], customer)
+        result = predict_customer(
+            artifact["pipeline"],
+            customer,
+            high_risk_threshold=high_risk_threshold,
+            medium_risk_threshold=medium_risk_threshold,
+        )
         probability = result["churn_probability"]
         st.metric("Predicted churn probability", f"{probability:.1%}")
         st.progress(probability)
@@ -200,7 +255,12 @@ if uploaded_file is None:
 else:
     try:
         uploaded_data = pd.read_csv(uploaded_file)
-        batch_results = predict_batch(artifact["pipeline"], uploaded_data)
+        batch_results = predict_batch(
+            artifact["pipeline"],
+            uploaded_data,
+            high_risk_threshold=high_risk_threshold,
+            medium_risk_threshold=medium_risk_threshold,
+        )
         summary = batch_summary(batch_results)
 
         summary_columns = st.columns(4)

@@ -28,6 +28,14 @@ def test_batch_predictions_are_ranked_and_summarized(trained_pipeline) -> None:
     assert summary["customers"] == 12
     assert summary["high_risk"] + summary["medium_risk"] <= 12
 
+    lower_threshold = predict_batch(
+        trained_pipeline,
+        uploaded,
+        high_risk_threshold=0.30,
+        medium_risk_threshold=0.10,
+    )
+    assert (lower_threshold["risk_level"] == "High").sum() >= summary["high_risk"]
+
 
 def test_original_kaggle_columns_are_accepted() -> None:
     raw = pd.read_csv("data/WA_Fn-UseC_-Telco-Customer-Churn.csv", nrows=3)

@@ -92,11 +92,23 @@ def validate_batch(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     return standardized, identifier
 
 
-def predict_batch(pipeline: Pipeline, data: pd.DataFrame) -> pd.DataFrame:
+def predict_batch(
+    pipeline: Pipeline,
+    data: pd.DataFrame,
+    high_risk_threshold: float = 0.70,
+    medium_risk_threshold: float = 0.40,
+) -> pd.DataFrame:
     """Score a validated customer batch and return a risk-ranked result table."""
     customers, identifiers = validate_batch(data)
     probabilities = pipeline.predict_proba(customers)[:, 1]
-    details = [risk_details(float(probability)) for probability in probabilities]
+    details = [
+        risk_details(
+            float(probability),
+            high_risk_threshold=high_risk_threshold,
+            medium_risk_threshold=medium_risk_threshold,
+        )
+        for probability in probabilities
+    ]
 
     result = pd.DataFrame(
         {
