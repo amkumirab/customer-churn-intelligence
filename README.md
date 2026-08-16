@@ -23,6 +23,7 @@ telecom customers, 19 model features, and a binary churn target.
 - Evaluation with ROC-AUC, accuracy, precision, recall, and F1
 - Global and per-customer explanations using SHAP values
 - Batch CSV scoring with validation, risk ranking, and downloadable results
+- Cost-aware decision thresholds with Precision and Recall trade-off estimates
 - Interactive Streamlit dashboard with risk-based recommendations
 - Automated tests with GitHub Actions and optional Docker deployment
 
@@ -78,6 +79,19 @@ The dashboard can score up to 10,000 customers in one upload:
 
 Download the input template directly from the dashboard or use
 [`data/example_customers.csv`](data/example_customers.csv) as a schema reference.
+
+## Decision policy and cost assumptions
+
+The dashboard sidebar supports scenario-based threshold selection:
+
+- set the estimated cost of contacting one customer
+- set the estimated cost of missing one customer who churns
+- compare the selected policy with the lowest-cost evaluated threshold
+- review the expected Precision, Recall, outreach volume, and evaluation cost
+- apply the selected risk thresholds to both single and batch predictions
+
+The estimates use held-out evaluation counts and simplified cost assumptions. They are intended
+for comparing policies, not for forecasting exact financial outcomes.
 
 ## Quick start
 
@@ -141,6 +155,7 @@ src/data.py           Kaggle cleaner and synthetic fallback generator
 src/batch.py          CSV validation, batch scoring, summaries, and export data
 src/explain.py        SHAP global and local explanation utilities
 src/model.py          Preprocessing, training, evaluation and prediction
+src/threshold.py      Threshold evaluation and retention cost scenarios
 src/train.py          Training command-line interface
 tests/                Automated tests
 .github/workflows/    Continuous integration
@@ -155,7 +170,6 @@ tests/                Automated tests
 
 ## Suggested next improvements
 
-- Tune the decision threshold using retention campaign costs
 - Add drift monitoring and model versioning
 - Deploy the dashboard to Streamlit Community Cloud
 - Add probability calibration and cost-sensitive threshold selection

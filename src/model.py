@@ -25,8 +25,9 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .data import CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES, TARGET
 from .explain import global_feature_importance
+from .threshold import threshold_counts
 
-ARTIFACT_VERSION = 2
+ARTIFACT_VERSION = 3
 
 
 def build_pipeline(classifier: Any) -> Pipeline:
@@ -96,12 +97,14 @@ def train_and_evaluate(
 
     results: dict[str, dict[str, float]] = {}
     fitted: dict[str, Pipeline] = {}
+    test_probabilities: dict[str, Any] = {}
     for name, classifier in candidates.items():
         pipeline = build_pipeline(classifier)
         pipeline.fit(x_train, y_train)
         probability = pipeline.predict_proba(x_test)[:, 1]
         results[name] = _metrics(y_test, probability)
         fitted[name] = pipeline
+        test_probabilities[name] = probability
 
     best_name = max(results, key=lambda name: results[name]["roc_auc"])
     background_size = min(100, len(x_train))
@@ -121,6 +124,7 @@ def train_and_evaluate(
         "best_model": best_name,
         "feature_columns": FEATURE_COLUMNS,
         "global_feature_importance": importance,
+        "threshold_counts": threshold_counts(y_test, test_probabilities[best_name]),
         "test_rows": len(x_test),
         "churn_rate": round(float(data[TARGET].mean()), 4),
         "models": results,
@@ -151,18 +155,33 @@ def load_artifact(model_path: str | Path) -> dict[str, Any]:
     return joblib.load(model_path)
 
 
-def risk_details(probability: float) -> tuple[str, str]:
+def risk_details(
+    probability: float,
+    high_risk_threshold: float = 0.70,
+    medium_risk_threshold: float = 0.40,
+) -> tuple[str, str]:
     """Translate a churn probability into a risk tier and retention action."""
-    if probability >= 0.70:
+    if not 0 < medium_risk_threshold < high_risk_threshold < 1:
+        raise ValueError("Risk thresholds must satisfy 0 < medium < high < 1.")
+    if probability >= high_risk_threshold:
         return "High", "Contact the customer and offer a retention incentive."
-    if probability >= 0.40:
+    if probability >= medium_risk_threshold:
         return "Medium", "Review recent support issues and monitor the account."
     return "Low", "No immediate intervention is required."
 
 
-def predict_customer(pipeline: Pipeline, customer: dict[str, Any]) -> dict[str, Any]:
+def predict_customer(
+    pipeline: Pipeline,
+    customer: dict[str, Any],
+    high_risk_threshold: float = 0.70,
+    medium_risk_threshold: float = 0.40,
+) -> dict[str, Any]:
     """Predict churn risk for one customer and attach an action label."""
     row = pd.DataFrame([customer], columns=FEATURE_COLUMNS)
     probability = float(pipeline.predict_proba(row)[0, 1])
-    risk, action = risk_details(probability)
+    risk, action = risk_details(
+        probability,
+        high_risk_threshold=high_risk_threshold,
+        medium_risk_threshold=medium_risk_threshold,
+    )
     return {"churn_probability": round(probability, 4), "risk_level": risk, "action": action}

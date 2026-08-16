@@ -15,6 +15,7 @@ def test_training_returns_metrics_prediction_and_explanations(tmp_path: Path) ->
     assert report["artifact_version"] == ARTIFACT_VERSION
     assert len(report["global_feature_importance"]) == 10
     assert report["global_feature_importance"][0]["importance"] > 0
+    assert len(report["threshold_counts"]) == 17
 
     customer = data.iloc[0][FEATURE_COLUMNS].to_dict()
     result = predict_customer(pipeline, customer)
