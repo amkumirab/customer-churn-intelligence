@@ -73,9 +73,14 @@ The dashboard can score up to 10,000 customers in one upload:
 - accepts the included project template or the original Kaggle Telco column names
 - validates required fields and returns readable data-quality errors
 - preserves `customer_id` or Kaggle `customerID` values when available
+- preserves leading zeros and literal identifiers such as `NA`
+- rejects empty files, non-finite charges, negative amounts, and unsupported categories
 - ranks customers by churn probability and assigns Low, Medium, or High risk
 - summarizes the high- and medium-risk customer counts
 - exports a retention-ready CSV with recommended actions
+
+CSV exports prefix formula-like text with an apostrophe so spreadsheet applications treat
+customer identifiers as text. Numeric prediction columns remain numeric.
 
 Download the input template directly from the dashboard or use
 [`data/example_customers.csv`](data/example_customers.csv) as a schema reference.
