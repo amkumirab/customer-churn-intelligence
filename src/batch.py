@@ -12,6 +12,28 @@ from .data import FEATURE_COLUMNS, KAGGLE_COLUMNS, TARGET
 from .model import risk_details
 
 MAX_BATCH_ROWS = 10_000
+CATEGORY_VALUES = {
+    "gender": {"Female", "Male"},
+    "senior_citizen": {"Yes", "No"},
+    "has_partner": {"Yes", "No"},
+    "has_dependents": {"Yes", "No"},
+    "phone_service": {"Yes", "No"},
+    "multiple_lines": {"Yes", "No", "No phone service"},
+    "internet_service": {"DSL", "Fiber optic", "No"},
+    "contract_type": {"Month-to-month", "One year", "Two year"},
+    "paperless_billing": {"Yes", "No"},
+    "payment_method": {
+        "Electronic check", "Mailed check",
+        "Bank transfer (automatic)", "Credit card (automatic)",
+    },
+    **{
+        feature: {"Yes", "No", "No internet service"}
+        for feature in (
+            "online_security", "online_backup", "device_protection",
+            "tech_support", "streaming_tv", "streaming_movies",
+        )
+    },
+}
 KAGGLE_FEATURE_COLUMNS = {
     source: destination
     for source, destination in KAGGLE_COLUMNS.items()
@@ -23,12 +45,46 @@ class BatchValidationError(ValueError):
     """Raised when an uploaded batch cannot be safely scored."""
 
 
+def read_customer_csv(source: Any) -> pd.DataFrame:
+    """Read a bounded UTF-8 CSV while preserving literal customer identifiers."""
+    try:
+        data = pd.read_csv(
+            source,
+            dtype={"customer_id": "string", "customerID": "string"},
+            keep_default_na=False,
+            nrows=MAX_BATCH_ROWS + 1,
+        )
+    except pd.errors.EmptyDataError as error:
+        raise BatchValidationError("The uploaded CSV is empty.") from error
+    except (pd.errors.ParserError, UnicodeDecodeError) as error:
+        raise BatchValidationError("Upload a valid UTF-8 CSV with a consistent header.") from error
+    if data.empty:
+        raise BatchValidationError("The uploaded CSV is empty.")
+    if len(data) > MAX_BATCH_ROWS:
+        raise BatchValidationError(f"The CSV exceeds the {MAX_BATCH_ROWS:,}-customer limit.")
+    return data
+
+
+def export_predictions_csv(results: pd.DataFrame) -> bytes:
+    """Encode results for spreadsheets without allowing formula-like text cells."""
+    safe = results.copy()
+    for column in safe.select_dtypes(include=["object", "string"]).columns:
+        safe[column] = safe[column].map(
+            lambda value: "'" + value
+            if isinstance(value, str)
+            and (value.lstrip().startswith(("=", "+", "-", "@"))
+                 or value.startswith(("\t", "\r", "\n")))
+            else value
+        )
+    return safe.to_csv(index=False).encode("utf-8-sig")
+
+
 def _standardize_columns(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     if set(FEATURE_COLUMNS).issubset(data.columns):
         identifier = (
             data["customer_id"].astype(str)
             if "customer_id" in data.columns
-            else pd.Series(data.index + 1, index=data.index).astype(str)
+            else pd.Series(np.arange(1, len(data) + 1), index=data.index).astype(str)
         )
         return data[FEATURE_COLUMNS].copy(), identifier
 
@@ -37,7 +93,7 @@ def _standardize_columns(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
         identifier = (
             data["customerID"].astype(str)
             if "customerID" in data.columns
-            else pd.Series(data.index + 1, index=data.index).astype(str)
+            else pd.Series(np.arange(1, len(data) + 1), index=data.index).astype(str)
         )
         standardized = data[list(KAGGLE_FEATURE_COLUMNS)].rename(
             columns=KAGGLE_FEATURE_COLUMNS
@@ -62,6 +118,8 @@ def validate_batch(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
         raise BatchValidationError(
             f"The upload contains {len(data):,} rows; the limit is {MAX_BATCH_ROWS:,}."
         )
+    if data.columns.has_duplicates:
+        raise BatchValidationError("CSV column names must be unique.")
 
     standardized, identifier = _standardize_columns(data)
     for column in ["tenure_months", "monthly_charges", "total_charges"]:
@@ -74,20 +132,19 @@ def validate_batch(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
             raise BatchValidationError(
                 f"Column '{column}' contains {int(invalid.sum())} non-numeric value(s)."
             )
+        if not np.isfinite(standardized[column].dropna()).all():
+            raise BatchValidationError(f"Column '{column}' must contain finite numbers.")
+        if (standardized[column] < 0).any():
+            raise BatchValidationError(f"Column '{column}' cannot contain negative values.")
 
     if standardized[["tenure_months", "monthly_charges"]].isna().any().any():
         raise BatchValidationError("Tenure and monthly charges cannot be blank.")
-    if (standardized["tenure_months"] < 0).any():
-        raise BatchValidationError("Tenure cannot be negative.")
-    if (standardized["monthly_charges"] < 0).any():
-        raise BatchValidationError("Monthly charges cannot be negative.")
-
-    empty_categories = standardized.drop(
-        columns=["tenure_months", "monthly_charges", "total_charges"]
-    ).isna()
-    if empty_categories.any().any():
-        columns = ", ".join(empty_categories.columns[empty_categories.any()].tolist())
-        raise BatchValidationError(f"Categorical values cannot be blank: {columns}")
+    for column, allowed in CATEGORY_VALUES.items():
+        standardized[column] = standardized[column].astype("string").str.strip()
+        if not standardized[column].isin(allowed).all():
+            raise BatchValidationError(f"Column '{column}' contains blank or unsupported values.")
+    if identifier.isna().any() or identifier.astype(str).str.strip().eq("").any():
+        raise BatchValidationError("Customer identifiers cannot be blank.")
 
     return standardized, identifier
 

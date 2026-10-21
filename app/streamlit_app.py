@@ -15,7 +15,9 @@ if str(ROOT) not in sys.path:
 from src.batch import (  # noqa: E402
     BatchValidationError,
     batch_summary,
+    export_predictions_csv,
     predict_batch,
+    read_customer_csv,
 )
 from src.data import FEATURE_COLUMNS, KAGGLE_FILENAME, load_training_data  # noqa: E402
 from src.explain import explain_customer  # noqa: E402
@@ -254,7 +256,7 @@ if uploaded_file is None:
     )
 else:
     try:
-        uploaded_data = pd.read_csv(uploaded_file)
+        uploaded_data = read_customer_csv(uploaded_file)
         batch_results = predict_batch(
             artifact["pipeline"],
             uploaded_data,
@@ -286,12 +288,12 @@ else:
         )
         st.download_button(
             "Download scored customers",
-            batch_results.to_csv(index=False).encode("utf-8"),
+            export_predictions_csv(batch_results),
             file_name="churn_predictions.csv",
             mime="text/csv",
             width="stretch",
         )
-    except (BatchValidationError, pd.errors.ParserError, UnicodeDecodeError) as error:
+    except BatchValidationError as error:
         st.error(f"The CSV could not be processed: {error}")
 
 st.divider()
