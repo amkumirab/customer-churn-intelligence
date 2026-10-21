@@ -97,8 +97,12 @@ The dashboard sidebar supports scenario-based threshold selection:
 - set the estimated cost of contacting one customer
 - set the estimated cost of missing one customer who churns
 - compare the selected policy with the lowest-cost evaluated threshold
+- apply any recommended threshold between 10% and 90% with one click
 - review the expected Precision, Recall, outreach volume, and evaluation cost
 - apply the selected risk thresholds to both single and batch predictions
+
+The headline test recall follows the selected threshold. Validation cost estimates are labeled
+separately, and the last submitted customer profile stays visible when the policy changes.
 
 The cost estimates use validation counts and simplified cost assumptions. They are intended
 for comparing policies, not for forecasting exact financial outcomes.
