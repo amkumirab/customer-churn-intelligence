@@ -73,14 +73,18 @@ missed_churn_cost = st.sidebar.number_input(
 recommendation = recommended_threshold(
     report["threshold_counts"], intervention_cost, missed_churn_cost
 )
+if "high_risk_threshold" not in st.session_state:
+    st.session_state["high_risk_threshold"] = 0.70
+if st.sidebar.button("Use recommended threshold"):
+    st.session_state["high_risk_threshold"] = float(recommendation["threshold"])
 high_risk_threshold = st.sidebar.slider(
     "High-risk threshold",
-    min_value=0.20,
+    min_value=0.10,
     max_value=0.90,
-    value=0.70,
     step=0.05,
+    key="high_risk_threshold",
 )
-medium_risk_threshold = round(max(0.10, high_risk_threshold - 0.30), 2)
+medium_risk_threshold = round(max(0.05, high_risk_threshold - 0.30), 2)
 selected_scenario = threshold_scenario(
     report["threshold_counts"],
     high_risk_threshold,
@@ -89,7 +93,7 @@ selected_scenario = threshold_scenario(
 )
 st.sidebar.metric("Recommended threshold", f"{recommendation['threshold']:.0%}")
 st.sidebar.metric(
-    "Estimated evaluation cost",
+    "Estimated validation cost",
     f"${selected_scenario['estimated_cost']:,.0f}",
     delta=(
         f"${selected_scenario['estimated_cost'] - recommendation['estimated_cost']:,.0f} "
@@ -98,15 +102,19 @@ st.sidebar.metric(
     delta_color="inverse",
 )
 st.sidebar.caption(
-    f"Selected policy: {selected_scenario['precision']:.1%} precision, "
+    f"Validation policy: {selected_scenario['precision']:.1%} precision, "
     f"{selected_scenario['recall']:.1%} recall, "
+    f"{int(selected_scenario['customers_contacted']):,} contacts. "
     f"medium risk starts at {medium_risk_threshold:.0%}."
+)
+test_scenario = threshold_scenario(
+    report["test_threshold_counts"], high_risk_threshold, intervention_cost, missed_churn_cost
 )
 
 metric_columns = st.columns(4)
 metric_columns[0].metric("Best model", report["best_model"].replace("_", " ").title())
 metric_columns[1].metric("ROC-AUC", f"{best_metrics['roc_auc']:.3f}")
-metric_columns[2].metric("Recall", f"{best_metrics['recall']:.3f}")
+metric_columns[2].metric("Test recall (selected policy)", f"{test_scenario['recall']:.3f}")
 metric_columns[3].metric("Dataset churn rate", f"{report['churn_rate']:.1%}")
 
 st.divider()
@@ -158,7 +166,7 @@ with left:
 with right:
     st.subheader("Risk assessment")
     if submitted:
-        customer = {
+        st.session_state["customer_profile"] = {
             "tenure_months": tenure,
             "monthly_charges": monthly,
             "total_charges": total,
@@ -179,6 +187,8 @@ with right:
             "paperless_billing": paperless,
             "payment_method": payment,
         }
+    if "customer_profile" in st.session_state:
+        customer = st.session_state["customer_profile"]
         result = predict_customer(
             artifact["pipeline"],
             customer,
