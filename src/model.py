@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ from .data import CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES, TARGE
 from .explain import global_feature_importance
 from .threshold import threshold_counts
 
-ARTIFACT_VERSION = 3
+ARTIFACT_VERSION = 4
 
 
 def build_pipeline(classifier: Any) -> Pipeline:
@@ -64,24 +65,37 @@ def _metrics(y_true: pd.Series, probability: Any, threshold: float = 0.5) -> dic
     }
 
 
+def split_training_data(
+    data: pd.DataFrame, random_state: int = 42
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Reserve 25% for final testing; split the remainder into 60% train and 15% validation."""
+    development, test = train_test_split(
+        data, test_size=0.25, stratify=data[TARGET], random_state=random_state
+    )
+    train, validation = train_test_split(
+        development, test_size=0.20,
+        stratify=development[TARGET], random_state=random_state,
+    )
+    return train, validation, test
+
+
 def train_and_evaluate(
     data: pd.DataFrame,
     model_path: str | Path | None = None,
     metrics_path: str | Path | None = None,
     random_state: int = 42,
 ) -> tuple[Pipeline, dict[str, Any]]:
-    """Compare candidate models and return the best pipeline by ROC-AUC."""
+    """Select on validation ROC-AUC and evaluate on an independent final test split."""
     missing = set(FEATURE_COLUMNS + [TARGET]) - set(data.columns)
     if missing:
         raise ValueError(f"Missing columns: {sorted(missing)}")
 
-    x_train, x_test, y_train, y_test = train_test_split(
-        data[FEATURE_COLUMNS],
-        data[TARGET],
-        test_size=0.25,
-        stratify=data[TARGET],
-        random_state=random_state,
-    )
+    if not data[TARGET].isin([0, 1]).all() or data[TARGET].nunique() != 2:
+        raise ValueError("Churn labels must contain both 0 and 1, with no missing values.")
+    train, validation, test = split_training_data(data, random_state=random_state)
+    x_train, y_train = train[FEATURE_COLUMNS], train[TARGET]
+    x_validation, y_validation = validation[FEATURE_COLUMNS], validation[TARGET]
+    x_test, y_test = test[FEATURE_COLUMNS], test[TARGET]
     candidates = {
         "logistic_regression": LogisticRegression(
             class_weight="balanced", max_iter=1_000, random_state=random_state
@@ -95,18 +109,26 @@ def train_and_evaluate(
         ),
     }
 
-    results: dict[str, dict[str, float]] = {}
+    validation_results: dict[str, dict[str, float]] = {}
     fitted: dict[str, Pipeline] = {}
-    test_probabilities: dict[str, Any] = {}
+    validation_probabilities: dict[str, Any] = {}
     for name, classifier in candidates.items():
         pipeline = build_pipeline(classifier)
         pipeline.fit(x_train, y_train)
-        probability = pipeline.predict_proba(x_test)[:, 1]
-        results[name] = _metrics(y_test, probability)
+        probability = pipeline.predict_proba(x_validation)[:, 1]
+        validation_results[name] = _metrics(y_validation, probability)
         fitted[name] = pipeline
-        test_probabilities[name] = probability
+        validation_probabilities[name] = probability
 
-    best_name = max(results, key=lambda name: results[name]["roc_auc"])
+    best_name = max(
+        fitted,
+        key=lambda name: roc_auc_score(y_validation, validation_probabilities[name]),
+    )
+    # The test split is first scored after the selected model is fixed.
+    test_probabilities = {
+        name: pipeline.predict_proba(x_test)[:, 1] for name, pipeline in fitted.items()
+    }
+    results = {name: _metrics(y_test, scores) for name, scores in test_probabilities.items()}
     background_size = min(100, len(x_train))
     explanation_background = x_train.sample(n=background_size, random_state=random_state)
     remaining = x_train.drop(index=explanation_background.index, errors="ignore")
@@ -124,7 +146,12 @@ def train_and_evaluate(
         "best_model": best_name,
         "feature_columns": FEATURE_COLUMNS,
         "global_feature_importance": importance,
-        "threshold_counts": threshold_counts(y_test, test_probabilities[best_name]),
+        "threshold_counts": threshold_counts(y_validation, validation_probabilities[best_name]),
+        "test_threshold_counts": threshold_counts(y_test, test_probabilities[best_name]),
+        "threshold_data_source": "validation",
+        "validation_models": validation_results,
+        "train_rows": len(train),
+        "validation_rows": len(validation),
         "test_rows": len(x_test),
         "churn_rate": round(float(data[TARGET].mean()), 4),
         "models": results,
@@ -161,6 +188,8 @@ def risk_details(
     medium_risk_threshold: float = 0.40,
 ) -> tuple[str, str]:
     """Translate a churn probability into a risk tier and retention action."""
+    if not isfinite(probability) or not 0 <= probability <= 1:
+        raise ValueError("Churn probability must be a finite number between 0 and 1.")
     if not 0 < medium_risk_threshold < high_risk_threshold < 1:
         raise ValueError("Risk thresholds must satisfy 0 < medium < high < 1.")
     if probability >= high_risk_threshold:
