@@ -1,7 +1,7 @@
 # Customer Churn Intelligence
 
 [![Tests](https://github.com/amkumirab/customer-churn-intelligence/actions/workflows/tests.yml/badge.svg)](https://github.com/amkumirab/customer-churn-intelligence/actions)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 An end-to-end machine-learning portfolio project that predicts telecom customer churn,
@@ -109,6 +109,9 @@ for comparing policies, not for forecasting exact financial outcomes.
 
 ## Quick start
 
+Use Python 3.12 or newer. SHAP 0.52 requires Python 3.12; the test runner and Docker image
+also use Python 3.12.
+
 ```bash
 git clone https://github.com/amkumirab/customer-churn-intelligence.git
 cd customer-churn-intelligence
@@ -159,6 +162,18 @@ pip install -r requirements-dev.txt
 pytest
 ruff check .
 ```
+
+## Container build
+
+```bash
+docker build -t customer-churn-intelligence .
+docker run --rm -p 8501:8501 customer-churn-intelligence
+```
+
+The build excludes virtual environments, local model artifacts, credentials, and scratch
+files through `.dockerignore`. The model is trained from the included dataset on first launch.
+Runtime requirements include minimum patched versions of Pillow, certifi, and urllib3;
+development requirements use pytest 9.0.3 or newer.
 
 ## Repository structure
 
