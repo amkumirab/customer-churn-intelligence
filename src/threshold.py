@@ -17,13 +17,13 @@ def threshold_counts(
     thresholds: Iterable[float] = DEFAULT_THRESHOLDS,
 ) -> list[dict[str, Any]]:
     """Calculate confusion-matrix counts across candidate thresholds."""
-    labels = np.asarray(list(y_true), dtype=int)
+    labels = np.asarray(list(y_true))
     scores = np.asarray(list(probabilities), dtype=float)
     if labels.size == 0 or labels.size != scores.size:
         raise ValueError("Labels and probabilities must have the same non-zero length.")
     if not np.isin(labels, [0, 1]).all():
         raise ValueError("Labels must contain only 0 and 1.")
-    if ((scores < 0) | (scores > 1)).any():
+    if not np.isfinite(scores).all() or ((scores < 0) | (scores > 1)).any():
         raise ValueError("Probabilities must be between 0 and 1.")
 
     rows: list[dict[str, Any]] = []
@@ -64,6 +64,8 @@ def cost_analysis(
     missed_churn_cost: float,
 ) -> pd.DataFrame:
     """Estimate policy cost for each threshold and rank the lowest-cost option."""
+    if not np.isfinite([intervention_cost, missed_churn_cost]).all():
+        raise ValueError("Cost assumptions must be finite numbers.")
     if intervention_cost < 0 or missed_churn_cost < 0:
         raise ValueError("Cost assumptions cannot be negative.")
     if not counts:

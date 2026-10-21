@@ -43,16 +43,18 @@ Train/test split -> preprocessing -> model comparison -> best model
 
 ## Baseline results
 
-The reproducible default run uses all 7,043 Kaggle records and a stratified 25% test split.
+The reproducible default run uses 7,043 Kaggle records with stratified training (60%),
+validation (15%), and final test (25%) splits. Models and cost thresholds are selected using
+validation data only. Final test labels cannot influence those decisions.
 
 | Model | ROC-AUC | Accuracy | Precision | Recall | F1 |
 |---|---:|---:|---:|---:|---:|
-| Logistic Regression | **0.846** | 0.750 | 0.519 | **0.797** | 0.628 |
-| Random Forest | 0.842 | **0.771** | **0.549** | 0.769 | **0.641** |
+| Logistic Regression | **0.846** | 0.748 | 0.516 | **0.803** | 0.628 |
+| Random Forest | 0.843 | **0.768** | **0.544** | 0.765 | **0.636** |
 
-Logistic Regression is selected by test ROC-AUC. Recall is highlighted because failing to flag
-a customer who actually churns can be expensive. Results are a portfolio baseline and should
-not be interpreted as production business performance.
+The best model is selected by validation ROC-AUC. The table reports final test metrics at a
+fixed threshold of 50%; the dashboard separately reports test recall at the selected policy.
+These are portfolio benchmarks, not production business performance.
 
 ## Explainable predictions
 
@@ -62,6 +64,9 @@ The dashboard makes model output easier to audit and communicate:
 - **Local explanations** show which factors increased or reduced one customer's predicted risk.
 - One-hot encoded values are grouped back into readable business fields.
 - A versioned model artifact stores a representative background sample for reproducibility.
+
+Linear explanations use the stored training background; forest explanations use training-path
+coverage. SHAP's additivity checks stay enabled for both model families.
 
 SHAP values explain model behavior and associations; they do not prove that a feature causes
 customer churn.
@@ -95,7 +100,7 @@ The dashboard sidebar supports scenario-based threshold selection:
 - review the expected Precision, Recall, outreach volume, and evaluation cost
 - apply the selected risk thresholds to both single and batch predictions
 
-The estimates use held-out evaluation counts and simplified cost assumptions. They are intended
+The cost estimates use validation counts and simplified cost assumptions. They are intended
 for comparing policies, not for forecasting exact financial outcomes.
 
 ## Quick start
@@ -168,10 +173,10 @@ tests/                Automated tests
 
 ## Important modeling choices
 
-- The train/test split is stratified because churn classes can be imbalanced.
+- Training, validation, and test splits are stratified because churn classes can be imbalanced.
 - Preprocessing is fitted only on training data to prevent data leakage.
 - Models use balanced class weights so minority-class errors matter during training.
-- ROC-AUC selects the best model; recall is also reported because missed churners are costly.
+- Validation ROC-AUC selects the best model; final test data is reserved for reporting.
 
 ## Suggested next improvements
 

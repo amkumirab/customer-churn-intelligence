@@ -43,8 +43,12 @@ def _build_explainer(pipeline: Pipeline, background: pd.DataFrame) -> tuple[Any,
             classifier, transformed_background, feature_names=feature_names
         )
     elif isinstance(classifier, RandomForestClassifier):
+        # Training-path coverage provides a consistent baseline for tree models.
+        # Keep SHAP's additivity check enabled for every explanation.
         explainer = shap.TreeExplainer(
-            classifier, transformed_background, feature_names=feature_names
+            classifier,
+            feature_perturbation="tree_path_dependent",
+            feature_names=feature_names,
         )
     else:
         explainer = shap.Explainer(
