@@ -67,3 +67,50 @@ def test_valid_upload_can_be_scored(monkeypatch, dashboard):
     dashboard.run(timeout=60)
     assert any(m.label == "Customers scored" and m.value == "3" for m in dashboard.metric)
     assert not dashboard.exception
+
+
+def test_workspace_has_focused_views_and_a_sample_data_path(dashboard):
+    assert [tab.label for tab in dashboard.tabs] == [
+        "Customer review", "Campaign workspace", "Model evaluation",
+    ]
+    next(b for b in dashboard.button if b.label == "Use sample customers").click().run(timeout=60)
+    assert any(m.label == "Customers scored" and m.value == "3" for m in dashboard.metric)
+    assert any(m.label == "Matching customers" and m.value == "3" for m in dashboard.metric)
+    assert any(m.label == "Planned contacts" for m in dashboard.metric)
+    assert not dashboard.exception
+
+
+def test_campaign_respects_zero_budget_after_rerun(dashboard):
+    next(b for b in dashboard.button if b.label == "Use sample customers").click().run(timeout=60)
+    dashboard.number_input(key="campaign_budget").set_value(0.0).run(timeout=60)
+    contacts = next(m for m in dashboard.metric if m.label == "Planned contacts")
+    assert contacts.value == "0"
+    assert any("No customers selected" in info.value for info in dashboard.info)
+    assert not dashboard.exception
+
+
+def test_empty_filter_selection_is_not_silently_treated_as_all(dashboard):
+    next(b for b in dashboard.button if b.label == "Use sample customers").click().run(timeout=60)
+    dashboard.multiselect(key="cohort_risk_filter").set_value([]).run(timeout=60)
+    assert next(m for m in dashboard.metric if m.label == "Matching customers").value == "0"
+    assert next(m for m in dashboard.metric if m.label == "Planned contacts").value == "0"
+    assert not dashboard.exception
+
+
+def test_duplicate_upload_is_rejected_for_campaign_preparation(monkeypatch, dashboard):
+    customers = pd.read_csv("data/example_customers.csv")
+    customers.insert(0, "customer_id", ["001", "001", "002"])
+    payload = customers.to_csv(index=False).encode()
+    monkeypatch.setattr("streamlit.file_uploader", lambda *args, **kwargs: BytesIO(payload))
+    dashboard.run(timeout=60)
+    assert any("unique" in error.value for error in dashboard.error)
+    assert not dashboard.exception
+
+
+def test_model_evaluation_distinguishes_validation_and_test(dashboard):
+    headings = [heading.value for heading in dashboard.subheader]
+    assert "Model comparison" in headings
+    assert "Final-test confusion matrix" in headings
+    assert "Validation threshold trade-offs" in headings
+    assert any("not calibrated" in warning.value for warning in dashboard.warning)
+    assert not dashboard.exception

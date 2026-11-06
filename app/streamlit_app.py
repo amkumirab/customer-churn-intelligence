@@ -5,26 +5,19 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.batch import (  # noqa: E402
-    BatchValidationError,
-    batch_summary,
-    export_predictions_csv,
-    predict_batch,
-    read_customer_csv,
-)
+from app.campaign_view import render_campaign_workspace  # noqa: E402
+from app.customer_view import render_customer_review  # noqa: E402
+from app.evaluation_view import render_model_evaluation  # noqa: E402
 from src.data import FEATURE_COLUMNS, KAGGLE_FILENAME, load_training_data  # noqa: E402
-from src.explain import explain_customer  # noqa: E402
 from src.model import (  # noqa: E402
     ARTIFACT_VERSION,
     load_artifact,
-    predict_customer,
     train_and_evaluate,
 )
 from src.threshold import recommended_threshold, threshold_scenario  # noqa: E402
@@ -117,197 +110,24 @@ metric_columns[1].metric("ROC-AUC", f"{best_metrics['roc_auc']:.3f}")
 metric_columns[2].metric("Test recall (selected policy)", f"{test_scenario['recall']:.3f}")
 metric_columns[3].metric("Dataset churn rate", f"{report['churn_rate']:.1%}")
 
-st.divider()
-left, right = st.columns([1.1, 0.9])
-with left:
-    st.subheader("Customer profile")
-    with st.form("customer_form"):
-        c1, c2, c3 = st.columns(3)
-        tenure = c1.slider("Tenure (months)", 0, 72, 12)
-        monthly = c2.number_input("Monthly charges ($)", 18.0, 125.0, 79.5, step=1.0)
-        total = c3.number_input(
-            "Total charges ($)", 0.0, 10_000.0, float(round(monthly * tenure, 2)), step=25.0
-        )
-        contract = c1.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
-        internet = c2.selectbox("Internet service", ["Fiber optic", "DSL", "No"])
-        payment = c3.selectbox(
-            "Payment method",
-            [
-                "Electronic check",
-                "Credit card (automatic)",
-                "Bank transfer (automatic)",
-                "Mailed check",
-            ],
-        )
-        paperless = c1.selectbox("Paperless billing", ["Yes", "No"])
-        senior = c2.selectbox("Senior citizen", ["No", "Yes"])
-        gender = c3.selectbox("Gender", ["Female", "Male"])
-        partner = c1.selectbox("Has a partner", ["No", "Yes"])
-        dependents = c2.selectbox("Has dependents", ["No", "Yes"])
-        phone = c3.selectbox("Phone service", ["Yes", "No"])
 
-        with st.expander("Service subscriptions"):
-            s1, s2, s3 = st.columns(3)
-            multiple_lines = s1.selectbox("Multiple lines", ["No", "Yes", "No phone service"])
-            online_security = s2.selectbox(
-                "Online security", ["No", "Yes", "No internet service"]
-            )
-            online_backup = s3.selectbox("Online backup", ["No", "Yes", "No internet service"])
-            device_protection = s1.selectbox(
-                "Device protection", ["No", "Yes", "No internet service"]
-            )
-            tech_support = s2.selectbox("Tech support", ["No", "Yes", "No internet service"])
-            streaming_tv = s3.selectbox("Streaming TV", ["No", "Yes", "No internet service"])
-            streaming_movies = s1.selectbox(
-                "Streaming movies", ["No", "Yes", "No internet service"]
-            )
-        submitted = st.form_submit_button("Calculate churn risk", width="stretch")
-
-with right:
-    st.subheader("Risk assessment")
-    if submitted:
-        st.session_state["customer_profile"] = {
-            "tenure_months": tenure,
-            "monthly_charges": monthly,
-            "total_charges": total,
-            "gender": gender,
-            "senior_citizen": senior,
-            "has_partner": partner,
-            "has_dependents": dependents,
-            "phone_service": phone,
-            "multiple_lines": multiple_lines,
-            "internet_service": internet,
-            "online_security": online_security,
-            "online_backup": online_backup,
-            "device_protection": device_protection,
-            "tech_support": tech_support,
-            "streaming_tv": streaming_tv,
-            "streaming_movies": streaming_movies,
-            "contract_type": contract,
-            "paperless_billing": paperless,
-            "payment_method": payment,
-        }
-    if "customer_profile" in st.session_state:
-        customer = st.session_state["customer_profile"]
-        result = predict_customer(
-            artifact["pipeline"],
-            customer,
-            high_risk_threshold=high_risk_threshold,
-            medium_risk_threshold=medium_risk_threshold,
-        )
-        probability = result["churn_probability"]
-        st.metric("Predicted churn probability", f"{probability:.1%}")
-        st.progress(probability)
-        if result["risk_level"] == "High":
-            st.error(f"High risk — {result['action']}")
-        elif result["risk_level"] == "Medium":
-            st.warning(f"Medium risk — {result['action']}")
-        else:
-            st.success(f"Low risk — {result['action']}")
-
-        local_explanation = explain_customer(
-            artifact["pipeline"],
-            customer,
-            artifact["explanation_background"],
-        )
-        st.markdown("**Why this prediction?**")
-        st.caption(
-            "Positive SHAP values increase predicted churn risk; negative values reduce it."
-        )
-        st.bar_chart(local_explanation.set_index("feature")[["impact"]])
-        st.dataframe(
-            local_explanation,
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "feature": "Factor",
-                "value": "Customer value",
-                "impact": st.column_config.NumberColumn("SHAP impact", format="%.4f"),
-                "direction": "Effect",
-            },
-        )
-
-        st.markdown("**Submitted profile**")
-        st.dataframe(pd.DataFrame([customer]), hide_index=True, width="stretch")
-    else:
-        st.info("Complete the profile and calculate its risk to see a prediction.")
-
-st.divider()
-st.subheader("What generally drives churn?")
-st.caption(
-    "Mean absolute SHAP values rank the features with the strongest overall influence."
+customer_tab, campaign_tab, evaluation_tab = st.tabs(
+    ["Customer review", "Campaign workspace", "Model evaluation"]
 )
-global_importance = pd.DataFrame(report["global_feature_importance"])
-st.bar_chart(global_importance.set_index("feature")[["importance"]])
-
-st.divider()
-st.subheader("Batch churn prediction")
-st.caption(
-    "Upload up to 10,000 customers, review the highest-risk accounts, and export the results."
-)
-
-template = pd.read_csv(ROOT / "data" / "example_customers.csv")[FEATURE_COLUMNS]
-upload_column, template_column = st.columns([3, 1])
-with upload_column:
-    uploaded_file = st.file_uploader("Upload a customer CSV", type=["csv"])
-with template_column:
-    st.download_button(
-        "Download CSV template",
-        template.to_csv(index=False).encode("utf-8"),
-        file_name="customer_batch_template.csv",
-        mime="text/csv",
-        width="stretch",
+with customer_tab:
+    render_customer_review(artifact, high_risk_threshold, medium_risk_threshold)
+with campaign_tab:
+    render_campaign_workspace(
+        artifact, ROOT, high_risk_threshold, medium_risk_threshold, intervention_cost
     )
-
-if uploaded_file is None:
-    st.info(
-        "Use the template for project-style columns. "
-        "Original Kaggle Telco columns are also accepted."
+with evaluation_tab:
+    render_model_evaluation(
+        report, high_risk_threshold, intervention_cost, missed_churn_cost
     )
-else:
-    try:
-        uploaded_data = read_customer_csv(uploaded_file)
-        batch_results = predict_batch(
-            artifact["pipeline"],
-            uploaded_data,
-            high_risk_threshold=high_risk_threshold,
-            medium_risk_threshold=medium_risk_threshold,
-        )
-        summary = batch_summary(batch_results)
-
-        summary_columns = st.columns(4)
-        summary_columns[0].metric("Customers scored", f"{summary['customers']:,}")
-        summary_columns[1].metric("High risk", f"{summary['high_risk']:,}")
-        summary_columns[2].metric("Medium risk", f"{summary['medium_risk']:,}")
-        summary_columns[3].metric(
-            "Average churn probability", f"{summary['average_probability']:.1%}"
-        )
-
-        st.dataframe(
-            batch_results,
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "customer_id": "Customer ID",
-                "churn_probability": st.column_config.ProgressColumn(
-                    "Churn probability", min_value=0.0, max_value=1.0, format="%.1%%"
-                ),
-                "risk_level": "Risk level",
-                "recommended_action": "Recommended action",
-            },
-        )
-        st.download_button(
-            "Download scored customers",
-            export_predictions_csv(batch_results),
-            file_name="churn_predictions.csv",
-            mime="text/csv",
-            width="stretch",
-        )
-    except BatchValidationError as error:
-        st.error(f"The CSV could not be processed: {error}")
 
 st.divider()
 st.caption(
     "Portfolio demonstration using the public IBM Telco dataset from Kaggle. "
-    "Predictions are not suitable for real business decisions."
+    "No outreach is executed. Predictions and scenario values are not suitable "
+    "for real business decisions."
 )
