@@ -4,8 +4,9 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An end-to-end machine-learning portfolio project that predicts telecom customer churn,
-compares classification models, and turns probability scores into simple retention actions.
+An end-to-end machine-learning portfolio project for telecom churn review and retention
+planning. Compare classifiers, explain customer scores, inspect cohort segments, and prepare
+a budget-constrained outreach scenario with a downloadable decision bundle.
 
 The project trains on the public **IBM Telco Customer Churn** dataset downloaded from
 [Kaggle](https://www.kaggle.com/datasets/blastchar/telco-customer-churn): 7,043 fictional
@@ -24,7 +25,10 @@ telecom customers, 19 model features, and a binary churn target.
 - Global and per-customer explanations using SHAP values
 - Batch CSV scoring with validation, risk ranking, and downloadable results
 - Cost-aware decision thresholds with Precision and Recall trade-off estimates
-- Interactive Streamlit dashboard with risk-based recommendations
+- Budget- and capacity-constrained campaign planning with deterministic contact priorities
+- Operational cohort segmentation, risk/contract filters, and score-weighted revenue exposure
+- In-memory decision bundles with protected CSVs, assumptions, and provenance fingerprints
+- Task-oriented Streamlit views for customer review, campaigns, and model evaluation
 - Automated tests with GitHub Actions and optional Docker deployment
 
 ## Architecture
@@ -33,12 +37,19 @@ telecom customers, 19 model features, and a binary churn target.
 Kaggle CSV or synthetic fallback
         |
         v
-Train/test split -> preprocessing -> model comparison -> best model
-                                                       |
-                                      +----------------+----------------+
-                                      |                                 |
-                                      v                                 v
-                              SHAP explanations                 Streamlit dashboard
+Train / validation / test -> train-only preprocessing -> validation model selection
+                                                               |
+                                                     Versioned model artifact
+                                                               |
+                          +------------------------------------+---------------------+
+                          |                                    |                     |
+                    Customer review                      Cohort scoring        Model evaluation
+                    + SHAP factors                             |
+                                                    Filters + segment analysis
+                                                               |
+                                                    Budget / capacity allocation
+                                                               |
+                                                    CSV + ZIP decision bundle
 ```
 
 ## Baseline results
@@ -79,6 +90,7 @@ The dashboard can score up to 10,000 customers in one upload:
 - validates required fields and returns readable data-quality errors
 - preserves `customer_id` or Kaggle `customerID` values when available
 - preserves leading zeros and literal identifiers such as `NA`
+- requires unique, nonblank customer IDs for the campaign workspace
 - rejects empty files, non-finite charges, negative amounts, and unsupported categories
 - ranks customers by churn probability and assigns Low, Medium, or High risk
 - summarizes the high- and medium-risk customer counts
@@ -89,6 +101,58 @@ customer identifiers as text. Numeric prediction columns remain numeric.
 
 Download the input template directly from the dashboard or use
 [`data/example_customers.csv`](data/example_customers.csv) as a schema reference.
+
+## Retention campaign workspace
+
+Open **Campaign workspace**, then upload a CSV or select **Use sample customers**.
+Use the risk-level and contract filters to define the population. Empty filter selections
+match no customers; they never silently expand the campaign to everyone.
+
+The workspace provides:
+
+- cohort counts, imputation warnings, and score-weighted monthly revenue exposure
+- segment comparisons by contract, internet service, payment method, or tenure band
+- a uniform outreach cost from the policy sidebar, a monetary budget, and a contact capacity
+- ranking by highest churn score or highest scenario net value, with customer ID as a tie-breaker
+- an optional exclusion of contacts with non-positive scenario net value
+- budget sensitivity and exportable contact priorities
+
+Only customers at or above the active high-risk threshold are eligible for outreach. Budget
+arithmetic uses integer cents, including small amounts such as $0.30 / $0.10. A zero-cost
+scenario remains capacity-limited. Scores retain full precision for eligibility; formatting
+must not promote a just-below-threshold customer into the campaign.
+
+Financial scenarios use explicit, editable assumptions:
+
+```text
+Scenario retained customers = churn score x assumed retention success rate
+Scenario retained revenue   = retained customers x monthly charges x horizon months
+Scenario net value          = retained revenue - outreach cost
+```
+
+For example, a score of 0.80, $100 monthly charges, a 20% assumed success rate, a six-month
+horizon, and $25 outreach cost produce $96 scenario retained revenue and $71 net value.
+This is arithmetic under assumptions, not evidence that outreach will cause that result.
+Class-balanced models are not calibrated probability forecasts. These values are neither
+profit nor customer lifetime value; margins, consent, contactability, and treatment effects
+are not modeled. No customer messages or campaigns are executed.
+
+**Download decision bundle** creates a ZIP in memory containing:
+
+| File | Contents |
+|---|---|
+| `scored_customers.csv` | Filtered cohort scores and operational segmentation fields |
+| `contact_list.csv` | Ranked contacts, outreach cost, and per-contact scenario values |
+| `contract_segments.csv` | Reconciled contract-level summaries |
+| `budget_scenarios.csv` | Zero, half-budget, and selected-budget allocations |
+| `manifest.json` | Filters, thresholds, configuration, totals, model report identity, and cohort hash |
+| `README.txt` | Definitions, safety notes, and modeling limitations |
+
+The manifest's cohort fingerprint hashes the exported, spreadsheet-protected cohort sorted
+by literal customer ID. The model report fingerprint identifies report contents, not model
+weights. Bundles exclude raw demographic profiles and uploaded churn labels, but still contain
+customer identifiers and financial fields. Uploaded records are not persisted by this code;
+downloaded files require appropriate handling. See [workspace design](docs/RETENTION_WORKSPACE.md).
 
 ## Decision policy and cost assumptions
 
@@ -163,6 +227,11 @@ pytest
 ruff check .
 ```
 
+The suite covers campaign allocation, scoring-to-feature alignment, safe bundles, and real
+Streamlit AppTest interactions in addition to training and CSV regressions. Browser visual
+checks, Docker checks, and remote runs remain separate gates; see the
+[release checklist](docs/RELEASE_CHECKLIST.md).
+
 ## Container build
 
 ```bash
@@ -182,11 +251,15 @@ app/                 Streamlit user interface
 data/                Kaggle dataset, attribution, and schema example
 src/data.py           Kaggle cleaner and synthetic fallback generator
 src/batch.py          CSV validation, batch scoring, summaries, and export data
+src/campaign.py       Budget/capacity allocation and sensitivity scenarios
+src/cohort.py         Identity-safe scoring, filtering, and segment aggregation
 src/explain.py        SHAP global and local explanation utilities
 src/model.py          Preprocessing, training, evaluation and prediction
+src/reporting.py      In-memory ZIP exports and provenance manifest
 src/threshold.py      Threshold evaluation and retention cost scenarios
 src/train.py          Training command-line interface
 tests/                Automated tests
+docs/                 Workspace design and release verification checklist
 .github/workflows/    Continuous integration
 ```
 
@@ -201,7 +274,8 @@ tests/                Automated tests
 
 - Add drift monitoring and model versioning
 - Deploy the dashboard to Streamlit Community Cloud
-- Add probability calibration and cost-sensitive threshold selection
+- Calibrate scores on development data and evaluate calibration independently
+- Evaluate actual retention treatment effects before attempting business deployment
 
 ## Dataset
 
