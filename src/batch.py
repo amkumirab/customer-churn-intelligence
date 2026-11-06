@@ -76,13 +76,13 @@ def export_predictions_csv(results: pd.DataFrame) -> bytes:
                  or value.startswith(("\t", "\r", "\n")))
             else value
         )
-    return safe.to_csv(index=False).encode("utf-8-sig")
+    return safe.to_csv(index=False, lineterminator="\n").encode("utf-8-sig")
 
 
 def _standardize_columns(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     if set(FEATURE_COLUMNS).issubset(data.columns):
         identifier = (
-            data["customer_id"].astype(str)
+            data["customer_id"].astype("string")
             if "customer_id" in data.columns
             else pd.Series(np.arange(1, len(data) + 1), index=data.index).astype(str)
         )
@@ -91,7 +91,7 @@ def _standardize_columns(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     missing_kaggle = set(KAGGLE_FEATURE_COLUMNS) - set(data.columns)
     if not missing_kaggle:
         identifier = (
-            data["customerID"].astype(str)
+            data["customerID"].astype("string")
             if "customerID" in data.columns
             else pd.Series(np.arange(1, len(data) + 1), index=data.index).astype(str)
         )
@@ -155,7 +155,7 @@ def predict_batch(
     high_risk_threshold: float = 0.70,
     medium_risk_threshold: float = 0.40,
 ) -> pd.DataFrame:
-    """Score a validated customer batch and return a risk-ranked result table."""
+    """Score a validated batch, preserving decision precision in the ranked result table."""
     customers, identifiers = validate_batch(data)
     probabilities = pipeline.predict_proba(customers)[:, 1]
     details = [
@@ -170,7 +170,8 @@ def predict_batch(
     result = pd.DataFrame(
         {
             "customer_id": identifiers.values,
-            "churn_probability": np.round(probabilities, 4),
+            # Keep threshold decisions and downstream campaign eligibility consistent.
+            "churn_probability": probabilities,
             "risk_level": [detail[0] for detail in details],
             "recommended_action": [detail[1] for detail in details],
         }
