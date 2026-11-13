@@ -22,6 +22,7 @@ telecom customers, 19 model features, and a binary churn target.
 - Missing-value handling, scaling, and one-hot encoding
 - Comparison of Logistic Regression and Random Forest
 - Evaluation with ROC-AUC, accuracy, precision, recall, and F1
+- Training-only sigmoid calibration diagnostics with Brier/log loss and reliability diagrams
 - Global and per-customer explanations using SHAP values
 - Batch CSV scoring with validation, risk ranking, and downloadable results
 - Cost-aware decision thresholds with Precision and Recall trade-off estimates
@@ -66,6 +67,38 @@ validation data only. Final test labels cannot influence those decisions.
 The best model is selected by validation ROC-AUC. The table reports final test metrics at a
 fixed threshold of 50%; the dashboard separately reports test recall at the selected policy.
 These are portfolio benchmarks, not production business performance.
+
+## Probability quality and calibration
+
+The **Model evaluation** tab compares the selected original model with a separate
+sigmoid-calibrated candidate. It reports Brier score, log loss, observed prevalence, sample
+counts, and reliability points for validation and final test separately. Download the aggregate
+comparison as `calibration_report.json`; it contains no individual customer records.
+
+Calibration uses five seeded stratified folds on training rows only, with the entire
+preprocessing pipeline refitted in each fold. Out-of-fold predictions fit the sigmoid mapping;
+the candidate's base estimator is then refitted on all training rows. Validation and final-test
+labels never fit the calibrator. For very small training populations, folds are reduced to the
+minority-class count, with at least two rows per class required.
+
+This release is **diagnostic only**. The original pipeline remains active for single-customer
+predictions, campaign scoring, thresholds, and SHAP explanations. The candidate is stored under
+a separate artifact key rather than silently promoted using final-test results. Artifact schema
+v5 triggers regeneration of older local artifacts on the next dashboard launch.
+
+One default Telco run (seed 42, scikit-learn 1.9.0, 1,761 final-test rows) produced:
+
+| Variant | Final-test Brier score | Final-test log loss |
+|---|---:|---:|
+| Original Logistic Regression (active) | 0.16654 | 0.49216 |
+| Sigmoid candidate (comparison only) | 0.13660 | 0.41589 |
+
+Lower losses indicate better overall probability quality, not necessarily calibration alone.
+The diagram also exposes counts in ten fixed-width bins: empty bins remain null and are not
+plotted, and small bins are noisy. These results do not establish future performance, causal
+retention impact, or a reason to promote a model using test data. See
+[calibration design and verification](docs/CALIBRATION.md) and the
+[official calibration guide](https://scikit-learn.org/stable/modules/calibration.html).
 
 ## Explainable predictions
 
@@ -252,6 +285,7 @@ data/                Kaggle dataset, attribution, and schema example
 src/data.py           Kaggle cleaner and synthetic fallback generator
 src/batch.py          CSV validation, batch scoring, summaries, and export data
 src/campaign.py       Budget/capacity allocation and sensitivity scenarios
+src/calibration.py    Training-only calibration and probability-quality diagnostics
 src/cohort.py         Identity-safe scoring, filtering, and segment aggregation
 src/explain.py        SHAP global and local explanation utilities
 src/model.py          Preprocessing, training, evaluation and prediction
@@ -274,7 +308,7 @@ docs/                 Workspace design and release verification checklist
 
 - Add drift monitoring and model versioning
 - Deploy the dashboard to Streamlit Community Cloud
-- Calibrate scores on development data and evaluate calibration independently
+- Define validation-only promotion criteria before activating a calibrated candidate
 - Evaluate actual retention treatment effects before attempting business deployment
 
 ## Dataset
