@@ -4,6 +4,8 @@
 
 ### Added
 
+- Training-only sigmoid calibration comparison with Brier score, log loss, reliability points,
+  sample counts, and a downloadable aggregate JSON report. The active model is unchanged.
 - Retention campaign workspace with risk/contract filters and operational cohort segments.
 - Budget- and capacity-aware contact selection with risk or scenario-value prioritization.
 - Editable retention assumptions, positive-net-value eligibility, and budget sensitivity.
@@ -13,6 +15,8 @@
 
 ### Changed
 
+- Artifact schema v5 stores the comparison candidate separately and regenerates older local
+  artifacts on dashboard launch.
 - Dashboard responsibilities are separated into focused customer, campaign, and evaluation views.
 - Batch scores retain full precision to keep eligibility consistent with risk classification.
 - Missing identifiers are rejected before nullable values can become literal identifier strings.
