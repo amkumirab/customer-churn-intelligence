@@ -1,3 +1,4 @@
+import json
 from io import BytesIO
 from pathlib import Path
 
@@ -113,4 +114,44 @@ def test_model_evaluation_distinguishes_validation_and_test(dashboard):
     assert "Final-test confusion matrix" in headings
     assert "Validation threshold trade-offs" in headings
     assert any("not calibrated" in warning.value for warning in dashboard.warning)
+    assert not dashboard.exception
+
+
+def test_probability_quality_comparison_defaults_to_validation(dashboard, dashboard_artifact):
+    assert dashboard.selectbox(key="calibration_split").value == "Validation"
+    comparison = next(
+        table.value for table in dashboard.dataframe if "brier_score" in table.value.columns
+    )
+    assert len(comparison) == 2
+    assert comparison["samples"].tolist() == [dashboard_artifact["report"]["validation_rows"]] * 2
+    assert any("does not replace" in info.value for info in dashboard.info)
+    assert not dashboard.exception
+
+
+def test_diagnostic_split_does_not_change_live_prediction(dashboard, dashboard_artifact):
+    next(b for b in dashboard.button if b.label == "Calculate churn risk").click().run(timeout=60)
+    before = next(m.value for m in dashboard.metric if m.label == "Predicted churn probability")
+    dashboard.selectbox(key="calibration_split").set_value("Final test").run(timeout=60)
+    after = next(m.value for m in dashboard.metric if m.label == "Predicted churn probability")
+    assert before == after
+    comparison = next(
+        table.value for table in dashboard.dataframe if "brier_score" in table.value.columns
+    )
+    assert comparison["samples"].tolist() == [dashboard_artifact["report"]["test_rows"]] * 2
+    assert not dashboard.exception
+
+
+def test_downloadable_calibration_report_matches_the_artifact(
+    monkeypatch, dashboard, dashboard_artifact
+):
+    captured = {}
+
+    def capture_download(label, data, **kwargs):
+        if kwargs.get("key") == "download_calibration_report":
+            captured["report"] = json.loads(data)
+        return False
+
+    monkeypatch.setattr("streamlit.download_button", capture_download)
+    dashboard.run(timeout=60)
+    assert captured["report"] == dashboard_artifact["report"]["calibration"]
     assert not dashboard.exception
