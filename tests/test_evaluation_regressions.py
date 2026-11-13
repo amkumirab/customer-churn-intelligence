@@ -34,6 +34,9 @@ def test_holdout_labels_cannot_affect_selection_or_threshold_tuning(monkeypatch)
     assert first["best_model"] == second["best_model"]
     assert first["validation_models"] == second["validation_models"]
     assert first["threshold_counts"] == second["threshold_counts"]
+    assert first["calibration"]["validation"] == second["calibration"]["validation"]
+    assert first["calibration"]["test"] != second["calibration"]["test"]
+    assert first["calibration"]["active_variant"] == second["calibration"]["active_variant"]
     assert first["models"] != second["models"]
     assert first["threshold_data_source"] == "validation"
     assert sum(first["test_threshold_counts"][0][key] for key in (

@@ -24,11 +24,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from .calibration import fit_sigmoid_calibrator, probability_quality
 from .data import CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES, TARGET
 from .explain import global_feature_importance
 from .threshold import threshold_counts
 
-ARTIFACT_VERSION = 4
+ARTIFACT_VERSION = 5
 
 
 def build_pipeline(classifier: Any) -> Pipeline:
@@ -124,11 +125,37 @@ def train_and_evaluate(
         fitted,
         key=lambda name: roc_auc_score(y_validation, validation_probabilities[name]),
     )
+    # Compare a training-only calibrated candidate without replacing the active model.
+    calibration_candidate = fit_sigmoid_calibrator(
+        fitted[best_name], x_train, y_train, random_state=random_state,
+    )
+    calibrated_validation = calibration_candidate.predict_proba(x_validation)[:, 1]
     # The test split is first scored after the selected model is fixed.
     test_probabilities = {
         name: pipeline.predict_proba(x_test)[:, 1] for name, pipeline in fitted.items()
     }
     results = {name: _metrics(y_test, scores) for name, scores in test_probabilities.items()}
+    calibration_report = {
+        "status": "diagnostic_only",
+        "base_model": best_name,
+        "active_variant": "original",
+        "method": "sigmoid",
+        "folds": calibration_candidate.cv.n_splits,
+        "fit_source": "training_out_of_fold",
+        "training_rows": len(train),
+        "bin_strategy": "uniform",
+        "n_bins": 10,
+        "validation": {
+            "original": probability_quality(y_validation, validation_probabilities[best_name]),
+            "sigmoid": probability_quality(y_validation, calibrated_validation),
+        },
+        "test": {
+            "original": probability_quality(y_test, test_probabilities[best_name]),
+            "sigmoid": probability_quality(
+                y_test, calibration_candidate.predict_proba(x_test)[:, 1]
+            ),
+        },
+    }
     background_size = min(100, len(x_train))
     explanation_background = x_train.sample(n=background_size, random_state=random_state)
     remaining = x_train.drop(index=explanation_background.index, errors="ignore")
@@ -155,6 +182,7 @@ def train_and_evaluate(
         "test_rows": len(x_test),
         "churn_rate": round(float(data[TARGET].mean()), 4),
         "models": results,
+        "calibration": calibration_report,
     }
 
     if model_path:
@@ -166,6 +194,7 @@ def train_and_evaluate(
                 "pipeline": fitted[best_name],
                 "report": report,
                 "explanation_background": explanation_background,
+                "calibration_candidate": calibration_candidate,
             },
             output,
         )
