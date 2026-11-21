@@ -70,7 +70,7 @@ def render_model_evaluation(
     with st.expander("Feature importance values"):
         st.dataframe(importance, hide_index=True, width="stretch")
     st.warning(
-        "Model scores are not calibrated probabilities. The fictional Telco sample does not "
+        "Active model scores are not calibrated probabilities. This demonstration does not "
         "establish future performance, retention impact, or fairness across customer groups. "
         "Do not use this demonstration to make real customer decisions."
     )

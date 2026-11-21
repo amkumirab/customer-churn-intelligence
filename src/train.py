@@ -26,11 +26,14 @@ def main() -> None:
     default_data = Path("data") / KAGGLE_FILENAME
     if args.data:
         data = load_training_data(args.data)
+        source = "custom_csv"
     elif default_data.exists():
         data = load_training_data(default_data)
+        source = "kaggle_telco"
     else:
         data = generate_customers(args.rows)
-    _, report = train_and_evaluate(data, args.model, args.metrics)
+        source = "synthetic"
+    _, report = train_and_evaluate(data, args.model, args.metrics, training_data_source=source)
     print(json.dumps(report, indent=2))
 
 

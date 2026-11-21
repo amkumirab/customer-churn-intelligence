@@ -234,7 +234,11 @@ pip install -r requirements.txt
 streamlit run app/streamlit_app.py
 ```
 
-The first launch automatically cleans the included Kaggle dataset and trains the model.
+If no compatible saved model exists, the dashboard trains on the included Kaggle dataset.
+If that CSV is missing, it trains on reproducible synthetic data and labels the model as
+synthetic. If the example CSV is also missing, the campaign workspace generates a sample
+template. After restoring the Kaggle dataset, run `python -m src.train` and restart the app
+to replace a saved synthetic model.
 
 ## Train from the command line
 
@@ -273,7 +277,7 @@ docker run --rm -p 8501:8501 customer-churn-intelligence
 ```
 
 The build excludes virtual environments, local model artifacts, credentials, and scratch
-files through `.dockerignore`. The model is trained from the included dataset on first launch.
+files through `.dockerignore`. First-launch training uses the included dataset when available.
 Runtime requirements include minimum patched versions of Pillow, certifi, and urllib3;
 development requirements use pytest 9.0.3 or newer.
 

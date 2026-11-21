@@ -10,7 +10,7 @@ import streamlit as st
 from src.batch import BatchValidationError, batch_summary, export_predictions_csv, read_customer_csv
 from src.campaign import CampaignConfig, budget_scenarios, campaign_summary, plan_campaign
 from src.cohort import SEGMENT_FIELDS, filter_cohort, score_cohort, segment_summary
-from src.data import FEATURE_COLUMNS
+from src.data import FEATURE_COLUMNS, generate_customers
 from src.reporting import COHORT_EXPORT_COLUMNS, PLAN_EXPORT_COLUMNS, build_decision_bundle
 
 
@@ -190,7 +190,10 @@ def render_campaign_workspace(
         "Upload up to 10,000 customers or try the sample. Customer IDs must be unique. "
         "Original Kaggle Telco columns and the project template are both accepted."
     )
-    template = pd.read_csv(root / "data" / "example_customers.csv")[FEATURE_COLUMNS]
+    try:
+        template = pd.read_csv(root / "data" / "example_customers.csv")[FEATURE_COLUMNS]
+    except FileNotFoundError:
+        template = generate_customers(n_rows=100, random_state=43).head(3)[FEATURE_COLUMNS]
     uploaded = st.file_uploader("Upload a customer CSV", type=["csv"])
     left, right = st.columns(2)
     if left.button("Use sample customers", width="stretch"):

@@ -85,6 +85,8 @@ def train_and_evaluate(
     model_path: str | Path | None = None,
     metrics_path: str | Path | None = None,
     random_state: int = 42,
+    *,
+    training_data_source: str | None = None,
 ) -> tuple[Pipeline, dict[str, Any]]:
     """Select on validation ROC-AUC and evaluate on an independent final test split."""
     missing = set(FEATURE_COLUMNS + [TARGET]) - set(data.columns)
@@ -184,6 +186,8 @@ def train_and_evaluate(
         "models": results,
         "calibration": calibration_report,
     }
+    if training_data_source is not None:
+        report["training_data_source"] = training_data_source
 
     if model_path:
         output = Path(model_path)
