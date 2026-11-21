@@ -1,14 +1,41 @@
 import json
 from io import BytesIO
 from pathlib import Path
+from shutil import copyfile
 
 import pandas as pd
 import pytest
+from streamlit import cache_resource
 from streamlit.testing.v1 import AppTest
 
 from src import model
 from src.data import generate_customers
 from src.threshold import threshold_scenario
+
+
+def test_cold_start_without_data_files_trains_and_labels_synthetic_model(tmp_path):
+    source = Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py"
+    script = tmp_path / "app" / source.name
+    script.parent.mkdir()
+    copyfile(source, script)
+
+    cache_resource.clear()
+    app = AppTest.from_file(str(script)).run(timeout=60)
+
+    assert not app.exception
+    assert any("synthetic training data" in warning.value for warning in app.warning)
+    artifact = model.load_artifact(tmp_path / "models" / "churn_model.joblib")
+    assert artifact["report"]["training_data_source"] == "synthetic"
+    assert artifact["report"]["test_rows"] == 1_250
+
+    cache_resource.clear()
+    app = AppTest.from_file(str(script)).run(timeout=60)
+    assert not app.exception
+    assert any("synthetic training data" in warning.value for warning in app.warning)
+    sample_button = next(button for button in app.button if button.label == "Use sample customers")
+    sample_button.click().run(timeout=60)
+    assert not app.exception
+    assert any(metric.label == "Customers scored" and metric.value == "3" for metric in app.metric)
 
 
 @pytest.fixture(scope="module")

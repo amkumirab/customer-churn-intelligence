@@ -14,7 +14,12 @@ if str(ROOT) not in sys.path:
 from app.campaign_view import render_campaign_workspace  # noqa: E402
 from app.customer_view import render_customer_review  # noqa: E402
 from app.evaluation_view import render_model_evaluation  # noqa: E402
-from src.data import FEATURE_COLUMNS, KAGGLE_FILENAME, load_training_data  # noqa: E402
+from src.data import (  # noqa: E402
+    FEATURE_COLUMNS,
+    KAGGLE_FILENAME,
+    generate_customers,
+    load_training_data,
+)
 from src.model import (  # noqa: E402
     ARTIFACT_VERSION,
     load_artifact,
@@ -28,23 +33,33 @@ DATA_PATH = ROOT / "data" / KAGGLE_FILENAME
 
 
 @st.cache_resource
-def get_artifact() -> dict:
-    artifact = load_artifact(MODEL_PATH) if MODEL_PATH.exists() else None
+def get_artifact(model_path: Path, metrics_path: Path, data_path: Path) -> dict:
+    artifact = load_artifact(model_path) if model_path.exists() else None
     saved_features = artifact.get("report", {}).get("feature_columns") if artifact else None
     saved_version = artifact.get("artifact_version") if artifact else None
     if saved_features != FEATURE_COLUMNS or saved_version != ARTIFACT_VERSION:
-        data = load_training_data(DATA_PATH)
-        train_and_evaluate(data, MODEL_PATH, METRICS_PATH)
-        artifact = load_artifact(MODEL_PATH)
+        try:
+            data = load_training_data(data_path)
+        except FileNotFoundError:
+            data = generate_customers()
+            source = "synthetic"
+        else:
+            source = "kaggle_telco"
+        train_and_evaluate(data, model_path, metrics_path, training_data_source=source)
+        artifact = load_artifact(model_path)
     return artifact
 
 
 st.set_page_config(page_title="Churn Intelligence", page_icon="📉", layout="wide")
 st.title("Customer Churn Intelligence")
-st.caption("Risk scoring trained on the Kaggle IBM Telco Customer Churn dataset.")
-
-artifact = get_artifact()
+artifact = get_artifact(MODEL_PATH, METRICS_PATH, DATA_PATH)
 report = artifact["report"]
+if report.get("training_data_source") == "synthetic":
+    st.warning("This model uses synthetic training data. Its metrics are for demonstration only.")
+elif report.get("training_data_source") == "kaggle_telco":
+    st.caption("Risk scoring trained on the Kaggle IBM Telco Customer Churn dataset.")
+else:
+    st.caption("Telecom churn risk scoring and retention policy evaluation.")
 best_metrics = report["models"][report["best_model"]]
 
 st.sidebar.header("Decision policy")
@@ -127,7 +142,7 @@ with evaluation_tab:
 
 st.divider()
 st.caption(
-    "Portfolio demonstration using the public IBM Telco dataset from Kaggle. "
+    "Portfolio demonstration. "
     "No outreach is executed. Predictions and scenario values are not suitable "
     "for real business decisions."
 )
