@@ -135,6 +135,20 @@ customer identifiers as text. Numeric prediction columns remain numeric.
 Download the input template directly from the dashboard or use
 [`data/example_customers.csv`](data/example_customers.csv) as a schema reference.
 
+## Batch data drift
+
+After uploading a valid CSV, open **Batch data drift** to compare its tenure, monthly charges,
+and contract mix with the model's training split. The report uses the full validated upload
+before campaign filters and needs no churn labels. It shows counts, shares, percentage-point
+differences, and total variation distance (half the sum of absolute bucket-share differences).
+Numeric buckets have open ends; missing values and other contract types are counted separately
+in the reference. Small batches can vary substantially. A difference does not establish that
+model accuracy has changed and does not alter scores, eligibility, or campaign budgets.
+
+New model reports store aggregate counts, not individual records for this diagnostic.
+Synthetic training references are labeled. Older artifacts still score uploads; run
+`python -m src.train` and restart the dashboard to add a training reference.
+
 ## Retention campaign workspace
 
 Open **Campaign workspace**, then upload a CSV or select **Use sample customers**.
@@ -310,7 +324,7 @@ docs/                 Workspace design and release verification checklist
 
 ## Suggested next improvements
 
-- Add drift monitoring and model versioning
+- Add model versioning and longitudinal drift monitoring
 - Deploy the dashboard to Streamlit Community Cloud
 - Define validation-only promotion criteria before activating a calibrated candidate
 - Evaluate actual retention treatment effects before attempting business deployment

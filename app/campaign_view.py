@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from app.drift_view import render_drift_report
 from src.batch import BatchValidationError, batch_summary, export_predictions_csv, read_customer_csv
 from src.campaign import CampaignConfig, budget_scenarios, campaign_summary, plan_campaign
 from src.cohort import SEGMENT_FIELDS, filter_cohort, score_cohort, segment_summary
@@ -216,6 +217,8 @@ def render_campaign_workspace(
     except BatchValidationError as error:
         st.error(f"The CSV could not be processed: {error}")
         return
+    if uploaded is not None:
+        render_drift_report(cohort, artifact["report"])
     filtered = _render_cohort_analysis(cohort)
     st.divider()
     _render_campaign_plan(filtered, artifact, high, medium, contact_cost)

@@ -38,6 +38,32 @@ def test_cold_start_without_data_files_trains_and_labels_synthetic_model(tmp_pat
     assert any(metric.label == "Customers scored" and metric.value == "3" for metric in app.metric)
 
 
+@pytest.mark.parametrize("legacy_artifact", [False, True])
+def test_uploaded_batch_drift_report(monkeypatch, dashboard_artifact, legacy_artifact):
+    report = {**dashboard_artifact["report"], "training_data_source": "synthetic"}
+    if legacy_artifact:
+        report.pop("drift_reference")
+    artifact = {**dashboard_artifact, "report": report}
+    monkeypatch.setattr(model, "load_artifact", lambda path: artifact)
+    monkeypatch.setattr(model, "train_and_evaluate", lambda *args, **kwargs: None)
+    upload = Path(__file__).resolve().parents[1] / "data" / "example_customers.csv"
+    payload = upload.read_bytes()
+    monkeypatch.setattr("streamlit.file_uploader", lambda *args, **kwargs: BytesIO(payload))
+    cache_resource.clear()
+    try:
+        script = Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py"
+        app = AppTest.from_file(str(script)).run(timeout=60)
+        assert not app.exception
+        if legacy_artifact:
+            assert any("no training reference" in item.value for item in app.info)
+        else:
+            summary = next(t.value for t in app.dataframe if "distance" in t.value.columns)
+            assert len(summary) == 3
+            assert any("Reference: synthetic" in item.value for item in app.caption)
+    finally:
+        cache_resource.clear()
+
+
 @pytest.fixture(scope="module")
 def dashboard_artifact(tmp_path_factory):
     path = tmp_path_factory.mktemp("dashboard") / "model.joblib"
