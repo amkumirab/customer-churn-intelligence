@@ -4,8 +4,15 @@ from pathlib import Path
 import numpy as np
 
 from src.data import FEATURE_COLUMNS, generate_customers
+from src.drift import build_drift_reference
 from src.explain import explain_customer
-from src.model import ARTIFACT_VERSION, load_artifact, predict_customer, train_and_evaluate
+from src.model import (
+    ARTIFACT_VERSION,
+    load_artifact,
+    predict_customer,
+    split_training_data,
+    train_and_evaluate,
+)
 
 
 def test_training_returns_metrics_prediction_and_explanations(tmp_path: Path) -> None:
@@ -16,6 +23,8 @@ def test_training_returns_metrics_prediction_and_explanations(tmp_path: Path) ->
         data, model_path=model_path, metrics_path=metrics_path, random_state=17
     )
     assert json.loads(metrics_path.read_text(encoding="utf-8")) == report
+    training, _, _ = split_training_data(data, random_state=17)
+    assert report["drift_reference"] == build_drift_reference(training[FEATURE_COLUMNS])
 
     assert report["best_model"] in {"logistic_regression", "random_forest"}
     assert 0.5 <= report["models"][report["best_model"]]["roc_auc"] <= 1.0
