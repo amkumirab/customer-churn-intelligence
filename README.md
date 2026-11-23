@@ -68,6 +68,22 @@ The best model is selected by validation ROC-AUC. The table reports final test m
 fixed threshold of 50%; the dashboard separately reports test recall at the selected policy.
 These are portfolio benchmarks, not production business performance.
 
+## Ranking at fixed outreach capacities
+
+**Model evaluation** shows how many observed churners the active model ranks among the
+top 5%, 10%, and 20% of customers, separately for validation and final test. Slots are rounded
+down. If a cutoff splits a group of equal scores, the expected number of churners within the
+remaining slots is used so results do not depend on row order.
+
+Churn capture is the share of all observed churners found in the selected group. Its random
+baseline is the actual selected fraction of customers after rounding. Lift divides churn
+capture by that baseline. Capture and lift are undefined if there are no observed churners;
+lift is also undefined if there are no available slots.
+
+These fixed-capacity diagnostics do not apply the campaign threshold or select a model.
+They measure ranking, not the effect of contacting customers. Older model artifacts still
+work; run `python -m src.train` and restart the dashboard to populate this report.
+
 ## Probability quality and calibration
 
 The **Model evaluation** tab compares the selected original model with a separate
