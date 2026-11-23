@@ -28,6 +28,7 @@ from .calibration import fit_sigmoid_calibrator, probability_quality
 from .data import CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES, TARGET
 from .drift import build_drift_reference
 from .explain import global_feature_importance
+from .ranking import ranking_at_capacity
 from .threshold import threshold_counts
 
 ARTIFACT_VERSION = 5
@@ -187,6 +188,10 @@ def train_and_evaluate(
         "models": results,
         "calibration": calibration_report,
         "drift_reference": build_drift_reference(x_train),
+        "ranking": {
+            "validation": ranking_at_capacity(y_validation, validation_probabilities[best_name]),
+            "test": ranking_at_capacity(y_test, test_probabilities[best_name]),
+        },
     }
     if training_data_source is not None:
         report["training_data_source"] = training_data_source

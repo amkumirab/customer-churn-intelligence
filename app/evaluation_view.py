@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from app.calibration_view import render_calibration_comparison
+from app.ranking_view import render_ranking_evaluation
 from src.threshold import cost_analysis, threshold_scenario
 
 
@@ -62,6 +63,7 @@ def render_model_evaluation(
         "Cost = contacted customers x intervention cost + missed churners x missed-churn cost. "
         "This classification-policy comparison is separate from campaign revenue scenarios."
     )
+    render_ranking_evaluation(report)
     render_calibration_comparison(report)
     st.subheader("What generally drives churn?")
     st.caption("Mean absolute SHAP values on a training-only sample; associations are not causes.")

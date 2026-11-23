@@ -38,6 +38,27 @@ def test_cold_start_without_data_files_trains_and_labels_synthetic_model(tmp_pat
     assert any(metric.label == "Customers scored" and metric.value == "3" for metric in app.metric)
 
 
+def test_outreach_ranking_displays_both_splits_at_fixed_capacities(dashboard, dashboard_artifact):
+    ranking = next(table.value for table in dashboard.dataframe if "lift" in table.value.columns)
+    for label, key in (("Validation", "validation"), ("Final test", "test")):
+        rows = ranking.loc[ranking["split"].eq(label)]
+        assert rows["capacity_pct"].tolist() == [5, 10, 20]
+        assert rows["lift"].tolist() == pytest.approx(
+            [row["lift"] for row in dashboard_artifact["report"]["ranking"][key]]
+        )
+
+
+def test_outreach_ranking_is_optional_for_older_reports():
+    def render_without_ranking():
+        from app.ranking_view import render_ranking_evaluation
+
+        render_ranking_evaluation({})
+
+    app = AppTest.from_function(render_without_ranking).run(timeout=60)
+    assert not app.exception
+    assert "Retrain" in app.info[0].value
+
+
 @pytest.mark.parametrize("legacy_artifact", [False, True])
 def test_uploaded_batch_drift_report(monkeypatch, dashboard_artifact, legacy_artifact):
     report = {**dashboard_artifact["report"], "training_data_source": "synthetic"}
